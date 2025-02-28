@@ -2,7 +2,6 @@ import streamlit as st
 import sys
 import re
 import os
-import multiprocessing
 from exception import CustomeException
 from loggers import logging
 import fitz
