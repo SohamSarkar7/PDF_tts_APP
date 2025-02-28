@@ -1,0 +1,12 @@
+pdf2image
+pytesseract
+easyocr
+numpy
+streamlit
+gtts
+PyMuPDF
+transformers
+deep_translator
+openai
+torch
+-e .
