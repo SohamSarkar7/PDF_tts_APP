@@ -1,6 +1,4 @@
-// script.js
 
-// Lighting effect on file upload
 const fileUploader = document.querySelector('.st-file-uploader input[type="file"]');
 if (fileUploader) {
     fileUploader.addEventListener('change', () => {
@@ -12,7 +10,7 @@ if (fileUploader) {
     });
 }
 
-// Lighting effect on button click
+
 const summarizeButton = document.querySelector('.st-button button');
 if (summarizeButton) {
     summarizeButton.addEventListener('click', () => {

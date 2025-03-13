@@ -8,7 +8,8 @@ import fitz
 import easyocr
 import numpy as np
 from pdf2image import convert_from_path
-from transformers import pipeline
+from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
+import torch
 import io
 from gtts import gTTS
 import tempfile
@@ -20,12 +21,15 @@ def load_ocr_reader():
 
 reader = load_ocr_reader()
 
-# Initialize Hugging Face summarization pipeline and cache it
+# Initialize Hugging Face summarization model and tokenizer
 @st.cache_resource
-def load_summarizer():
-    return pipeline("summarization", model="facebook/bart-large-cnn", device=-1)
+def load_summarizer_model():
+    model_name = "facebook/bart-large-cnn"  # Or your local model path
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    model = AutoModelForSeq2SeqLM.from_pretrained(model_name)
+    return tokenizer, model
 
-summarizer = load_summarizer()
+tokenizer, model = load_summarizer_model()
 
 def pdf_reader(pdf_path):
     try:
@@ -76,14 +80,20 @@ def summarize_large_text(text, target_length=1000, min_length=30):
         summaries = []
         for chunk in chunks:
             if chunk.strip():
-                summary = summarizer(chunk, max_length=250, min_length=min_length, do_sample=False)
-                summaries.append(summary[0]['summary_text'])
+                prompt = f"Summarize the sentence which is understandable: {chunk}"
+                inputs = tokenizer([prompt], return_tensors="pt", max_length=1024, truncation=True)
+                summary_ids = model.generate(inputs["input_ids"], max_length=250, min_length=min_length, length_penalty=2.0, num_beams=4, early_stopping=True)
+                summary = tokenizer.decode(summary_ids[0], skip_special_tokens=True)
+                summaries.append(summary)
 
         combined_summary = " ".join(summaries)
 
         final_summary = combined_summary
         while len(final_summary.split()) > target_length:
-            final_summary = summarizer(final_summary, max_length=target_length + 200, min_length=min_length, do_sample=False)[0]['summary_text']
+            prompt = f"Summarize the sentence which is understandable: {final_summary}"
+            inputs = tokenizer([prompt], return_tensors="pt", max_length=1024, truncation=True)
+            summary_ids = model.generate(inputs["input_ids"], max_length=target_length + 200, min_length=min_length, length_penalty=2.0, num_beams=4, early_stopping=True)
+            final_summary = tokenizer.decode(summary_ids[0], skip_special_tokens=True)
 
         final_summary_words = final_summary.split()
         if len(final_summary_words) > target_length:
@@ -92,15 +102,15 @@ def summarize_large_text(text, target_length=1000, min_length=30):
         return final_summary
     except Exception as e:
         raise CustomeException(e, sys)
-    
+
 def convert_text_to_speech(text):
     try:
-        tts = gTTS(text=text, lang='en',tld ='co.in')
+        tts = gTTS(text=text, lang='en', tld='co.in')
 
         audio_dir = 'Audio_files'
-        os.makedirs(audio_dir,exist_ok=True)
+        os.makedirs(audio_dir, exist_ok=True)
 
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.mp3',dir=audio_dir) as tmp_file:
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.mp3', dir=audio_dir) as tmp_file:
             audio_path = tmp_file.name
             tts.save(audio_path)
         st.success("Audio generated successfully!")
@@ -108,7 +118,6 @@ def convert_text_to_speech(text):
     except Exception as e:
         st.error(f"Failed to convert text to speech: {str(e)}")
         return None
-
 
 def process_pdf(uploaded_file, target_length):
     try:
@@ -122,18 +131,18 @@ def process_pdf(uploaded_file, target_length):
                 if page_text.strip():
                     text += page_text
                 else:
-                    file_stream.seek(0) # reset stream to beginning.
+                    file_stream.seek(0)
                     images = convert_from_path(file_stream, first_page=page_num + 1, last_page=page_num + 1)
                     for img in images:
                         img_np = np.array(img)
                         extracted_text = reader.readtext(img_np, detail=0)
                         text += " ".join(extracted_text)
 
-        cleaned_text = cleaned_data(text)
-        cleaned_text = " ".join(cleaned_text)
+            cleaned_text = cleaned_data(text)
+            cleaned_text = " ".join(cleaned_text)
 
-        summary = summarize_large_text(cleaned_text, target_length=target_length)
-        return summary
+            summary = summarize_large_text(cleaned_text, target_length=target_length)
+            return summary
     except Exception as e:
         st.error(f"An error occurred: {e}")
         return None
